@@ -1,13 +1,13 @@
-// Write a script that will automate your setup
 import { spawnSync, execSync } from "node:child_process";
 import fs from "node:fs";
+
 let folderExits = false;
 try {
   const folder = fs.mkdirSync("./test", { recursive: true });
   if (!folder) {
     folderExits = true;
   } else {
-    console.log("Synchronous folder created successfully!");
+    console.log("Folder created successfully!");
     folderExits = true;
   }
 } catch (err) {
@@ -17,24 +17,7 @@ try {
 if (folderExits) {
   // Create project structure with domain-driven organization
   const folders = [
-    './test/src',
-    './test/src/shared',
-    './test/src/shared/middleware',
-    './test/src/shared/utils',
-    './test/src/shared/config',
-    './test/src/modules',
-    './test/src/modules/users',
-    './test/src/modules/users/controllers',
-    './test/src/modules/users/services',
-    './test/src/modules/users/models',
-    './test/src/modules/users/repositories',
-    './test/src/modules/auth',
-    './test/src/modules/auth/controllers',
-    './test/src/modules/auth/services',
-    './test/src/modules/auth/middleware',
-    './test/public',
-    './test/test/integration',
-    './test/test/unit'
+    './test/src'
   ];
 
   folders.forEach(folder => {
@@ -46,7 +29,7 @@ if (folderExits) {
     }
   });
 
-  // Create initial files
+  // Write content for the main file
   const serverContent = `
 import express, { Express, Request, Response } from 'express';
 import cors from 'cors';
@@ -61,18 +44,11 @@ const port = process.env.PORT || 3000;
 // Middleware
 app.use(cors());
 app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
 
 // Routes
 app.get('/', (req: Request, res: Response) => {
   return res.status(200).json({
-    message: 'Welcome to the API'
-  });
-});
-
-// Health check endpoint
-app.get('/health', (req: Request, res: Response) => {
-  return res.status(200).json({
+    message: 'Hello World!!!',
     status: 'OK',
     timestamp: new Date().toISOString()
   });
@@ -90,35 +66,41 @@ app.use((err: Error, req: Request, res: Response) => {
     error: 'Something broke!'
   });
 });
-
-export default app;
 `;
 
   fs.writeFileSync('./test/src/server.ts', serverContent, 'utf8');
   fs.writeFileSync('./test/.env', 'PORT=3000\nNODE_ENV=development', 'utf8');
   fs.writeFileSync('./test/.gitignore', 'node_modules\n.env\ndist\n.DS_Store\ncoverage\n', 'utf8');
   
-  // Syntax ->  spawn(command, arr => argument, obj => folderPath/filePath)
-  // Syntax ->  exec(command, obj => folderPath/filePath, callback)
-  const exc = execSync("npm init -y", { cwd: "./test" });
 
-  // Create the commands which will be executed
-  const installCommand = "npm install express nodemon better-sqlite3 dotenv cors";
-  const installTS = "npm install --save-dev @types/node @types/express @types/cors @types/better-sqlite3 typescript ts-node";
+  // Package list, which will be installed 
+  const dependenciesArr = ['express', 'nodemon', 'better-sqlite3', 'dotenv', 'cors'];
+  const typescriptDependencies = ['@types/node', '@types/express', '@types/cors', '@types/better-sqlite3', 'typescript', 'ts-node'];
 
-  const dependencies = "npm install express nodemon better-sqlite3 dotenv cors globals";
+  let dependenciesStr = "npm install ";
+  for (let i = 0; i < dependenciesArr.length; i++) {
+    dependenciesStr += dependenciesArr[i] + " ";
+  }
 
-  const installLint = "npm install -D eslint @typescript-eslint/parser @typescript-eslint/eslint-plugin"
-  const devDependencies = "npm install --save-dev @eslint/js @types/better-sqlite3 @types/cors @types/express @types/node @typescript-eslint/eslint-plugin @typescript-eslint/parser eslint ts-node typescript typescript-eslint";
+  let tsDependenciesStr = "npm install ";
+  for (let i = 0; i < typescriptDependencies.length; i++) {
+    tsDependenciesStr += typescriptDependencies[i] + " ";
+  }
+  tsDependenciesStr += "--save-dev";
+
+
+  // Install ESLint and TypeScript ESLint plugins
+  let installLint = "npm install -D eslint @typescript-eslint/parser @typescript-eslint/eslint-plugin"
+  let devDependencies = "npm install @eslint/js @types/better-sqlite3 @types/cors @types/express @types/node @typescript-eslint/eslint-plugin @typescript-eslint/parser eslint ts-node typescript typescript-eslint --save-dev";
   const initTS = "npx tsc --init";
+  const eslintConfig = "touch eslint.config.mjs"
 
+  const initStr = "npm init -y";
   
-
-  const excCommands = execSync(dependencies, { cwd: "./test" });
-  const excTs = execSync(devDependencies, { cwd: "./test" });
-  
-  const excInitTs = execSync(initTS, { cwd: "./test" }, (error, stdout, stderr) => {
-    if (error) {
+  const commandsArr = [initStr, dependenciesStr, devDependencies, initTS, installLint, eslintConfig];
+  for (let i = 0; i < commandsArr.length; i++) {
+     execSync(commandsArr[i], { cwd: "./test" }, (error, stdout, stderr) => {
+      if (error) {
       console.error(`Error executing command: ${error}`);
       return;
     }
@@ -127,23 +109,8 @@ export default app;
       return;
     }
     console.log(`stdout: ${stdout}`);
-  });
-  
-   const excLint = execSync(installLint, { cwd: "./test" }, (error, stdout, stderr) => {
-    if (error) {
-      console.error(`Error executing command: ${error}`);
-      return;
-    }
-    if (stderr) {
-      console.error(`stderr: ${stderr}`);
-      return;
-    }
-    console.log(`stdout: ${stdout}`);
-  });
-  
-  // TODO: handle the errors
-  const createEslintConfig = spawnSync("touch", ["eslint.config.mjs"], { cwd: "./test" });
-
+    })
+  }}
   const eslinitConfigContent = `
     import js from '@eslint/js';
     import tseslint from 'typescript-eslint';
@@ -179,6 +146,4 @@ export default app;
     if (err) {
       console.error("Error writing ESLint config file:", err);
     }
-  });
-
-} 
+  }) 
