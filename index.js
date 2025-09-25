@@ -1,37 +1,88 @@
-import { spawnSync, execSync } from "node:child_process";
+import { execSync } from "node:child_process";
 import fs from "node:fs";
 
-let folderExits = false;
-try {
-  const folder = fs.mkdirSync("./test", { recursive: true });
-  if (!folder) {
-    folderExits = true;
-  } else {
-    console.log("Folder created successfully!");
-    folderExits = true;
-  }
-} catch (err) {
-  console.error("Error creating folder synchronously:", err);
-}
+// Function to create project structure
+export function createProject(projectName, projectType, dependencies, useEslint = false) {
+  let folderExists = false;
 
-if (folderExits) {
-  // Create project structure with domain-driven organization
-  const folders = [
-    './test/src'
-  ];
-
-  folders.forEach(folder => {
-    try {
-      fs.mkdirSync(folder, { recursive: true });
-      console.log(`Created directory: ${folder}`);
-    } catch (err) {
-      console.error(`Error creating directory ${folder}:`, err);
+  try {
+    const folder = fs.mkdirSync(`./${projectName}`, { recursive: true });
+    if (!folder) {
+      folderExists = true;
+    } else {
+      console.log("Folder created successfully!");
+      folderExists = true;
     }
-  });
+  } catch (err) {
+    console.error("Error creating folder synchronously:", err);
+    return false;
+  }
 
-  // Write content for the main file
-  const serverContent = `
-import express, { Express, Request, Response } from 'express';
+  if (folderExists) {
+    // Create project structure
+    const folders = [
+      `./${projectName}/src`
+    ];
+
+    folders.forEach(folder => {
+      try {
+        fs.mkdirSync(folder, { recursive: true });
+        console.log(`Created directory: ${folder}`);
+      } catch (err) {
+        console.error(`Error creating directory ${folder}:`, err);
+      }
+    });
+
+    // Determine file extension and content based on project type
+    const fileExtension = projectType === 'ts' ? 'ts' : 'js';
+    const serverContent = projectType === 'ts' ? 
+      getTypeScriptServerContent() : 
+      getJavaScriptServerContent();
+
+    // Write main server file
+    fs.writeFileSync(`./${projectName}/src/server.${fileExtension}`, serverContent, 'utf8');
+    
+    // Write configuration files
+    fs.writeFileSync(`./${projectName}/.env`, 'PORT=3000\nNODE_ENV=development', 'utf8');
+    fs.writeFileSync(`./${projectName}/.gitignore`, 'node_modules\n.env\ndist\n.DS_Store\ncoverage\n', 'utf8');
+  
+    // Install dependencies
+    try {
+      console.log('Initializing npm...');
+      execSync('npm init -y', { cwd: `./${projectName}`, stdio: 'inherit' });
+
+      if (dependencies.length > 0) {
+        const dependenciesStr = dependencies.join(' ');
+        console.log('Installing dependencies...');
+        execSync(`npm install ${dependenciesStr}`, { cwd: `./${projectName}`, stdio: 'inherit' });
+      }
+
+      // Initialize TypeScript if needed
+      if (projectType === 'ts') {
+        console.log('Initializing TypeScript...');
+        execSync('npx tsc --init', { cwd: `./${projectName}`, stdio: 'inherit' });
+      }
+
+      // Setup ESLint if requested
+      if (useEslint) {
+        console.log('Setting up ESLint...');
+        const eslintConfigContent = getEslintConfig(projectType);
+        fs.writeFileSync(`./${projectName}/eslint.config.mjs`, eslintConfigContent, 'utf8');
+      }
+
+      console.log('Project created successfully!');
+      return true;
+    } catch (error) {
+      console.error('Error during project setup:', error.message);
+      return false;
+    }
+  }
+  
+  return false;
+}
+// Helper function to get TypeScript server content
+function getTypeScriptServerContent() {
+  return `import express, { Express, Request, Response } from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 
@@ -60,90 +111,98 @@ app.listen(port, () => {
 });
 
 // Error handling
-app.use((err: Error, req: Request, res: Response) => {
+app.use((err: Error, req: Request, res: Response, next: any) => {
   console.error(err.stack);
   return res.status(500).json({
     error: 'Something broke!'
   });
 });
 `;
+}
 
-  fs.writeFileSync('./test/src/server.ts', serverContent, 'utf8');
-  fs.writeFileSync('./test/.env', 'PORT=3000\nNODE_ENV=development', 'utf8');
-  fs.writeFileSync('./test/.gitignore', 'node_modules\n.env\ndist\n.DS_Store\ncoverage\n', 'utf8');
-  
+// Helper function to get JavaScript server content
+function getJavaScriptServerContent() {
+  return `const express = require('express');
+const cors = require('cors');
+const dotenv = require('dotenv');
 
-  // Package list, which will be installed 
-  const dependenciesArr = ['express', 'nodemon', 'better-sqlite3', 'dotenv', 'cors'];
-  const typescriptDependencies = ['@types/node', '@types/express', '@types/cors', '@types/better-sqlite3', 'typescript', 'ts-node'];
+// Load environment variables
+dotenv.config();
 
-  let dependenciesStr = "npm install ";
-  for (let i = 0; i < dependenciesArr.length; i++) {
-    dependenciesStr += dependenciesArr[i] + " ";
+const app = express();
+const port = process.env.PORT || 3000;
+
+// Middleware
+app.use(cors());
+app.use(express.json());
+
+// Routes
+app.get('/', (req, res) => {
+  return res.status(200).json({
+    message: 'Hello World!!!',
+    status: 'OK',
+    timestamp: new Date().toISOString()
+  });
+});
+
+// Start server
+app.listen(port, () => {
+  console.log(\`⚡️[server]: Server is running at http://localhost:\${port}\`);
+});
+
+// Error handling
+app.use((err, req, res, next) => {
+  console.error(err.stack);
+  return res.status(500).json({
+    error: 'Something broke!'
+  });
+});
+`;
+}
+
+// Helper function to get ESLint configuration
+function getEslintConfig(projectType) {
+  if (projectType === 'ts') {
+    return `import js from '@eslint/js';
+import tseslint from 'typescript-eslint';
+import globals from 'globals';
+
+export default [
+  js.configs.recommended,
+  ...tseslint.configs.recommended,
+  {
+    files: ['**/*.ts'],
+    languageOptions: {
+      globals: {
+        ...globals.node,
+      },
+    },
+    rules: {
+      '@typescript-eslint/no-unused-vars': ['warn'],
+      'arrow-body-style': ['error', 'always'],
+    },
+  },
+];
+`;
+  } else {
+    return `import js from '@eslint/js';
+import globals from 'globals';
+
+export default [
+  js.configs.recommended,
+  {
+    files: ['**/*.js'],
+    languageOptions: {
+      globals: {
+        ...globals.node,
+      },
+    },
+    rules: {
+      'no-unused-vars': ['warn'],
+      'arrow-body-style': ['error', 'always'],
+    },
+  },
+];
+`;
   }
-
-  let tsDependenciesStr = "npm install ";
-  for (let i = 0; i < typescriptDependencies.length; i++) {
-    tsDependenciesStr += typescriptDependencies[i] + " ";
-  }
-  tsDependenciesStr += "--save-dev";
-
-
-  // Install ESLint and TypeScript ESLint plugins
-  let installLint = "npm install -D eslint @typescript-eslint/parser @typescript-eslint/eslint-plugin"
-  let devDependencies = "npm install @eslint/js @types/better-sqlite3 @types/cors @types/express @types/node @typescript-eslint/eslint-plugin @typescript-eslint/parser eslint ts-node typescript typescript-eslint --save-dev";
-  const initTS = "npx tsc --init";
-  const eslintConfig = "touch eslint.config.mjs"
-
-  const initStr = "npm init -y";
-  
-  const commandsArr = [initStr, dependenciesStr, devDependencies, initTS, installLint, eslintConfig];
-  for (let i = 0; i < commandsArr.length; i++) {
-     execSync(commandsArr[i], { cwd: "./test" }, (error, stdout, stderr) => {
-      if (error) {
-      console.error(`Error executing command: ${error}`);
-      return;
-    }
-    if (stderr) {
-      console.error(`stderr: ${stderr}`);
-      return;
-    }
-    console.log(`stdout: ${stdout}`);
-    })
-  }}
-  const eslinitConfigContent = `
-    import js from '@eslint/js';
-    import tseslint from 'typescript-eslint';
-    import globals from 'globals';
-    
-    const config = await tseslint.config({
-      files: ['**/*.ts'],
-      languageOptions: {
-        parser: tseslint.parser,
-        parserOptions: {
-          sourceType: 'module',
-        },
-        globals: {
-          ...globals.node,
-        },
-      },
-      plugins: {
-        '@typescript-eslint': tseslint.plugin,
-      },
-      rules: {
-        '@typescript-eslint/no-unused-vars': ['warn'],
-        'arrow-body-style': ['error', 'always'],
-      },
-    });
-    export default [
-      js.configs.recommended,
-      ...tseslint.configs.recommended,
-      ...config,
-    ];
-  `
-  const eslinitConfigPath = "./test/eslint.config.mjs";
-  fs.writeFileSync(eslinitConfigPath, eslinitConfigContent, 'utf8', (err) => {
-    if (err) {
-      console.error("Error writing ESLint config file:", err);
-    }
-  }) 
+} 
