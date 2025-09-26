@@ -1,87 +1,67 @@
 import { execSync } from "node:child_process";
 import fs from "node:fs";
+import path from "node:path";
 
-// Function to create project structure
-export function createProject(projectName, projectType, dependencies, useEslint = false) {
-  let folderExists = false;
-
+export function createProject(projectName, projectType, dependencies, useEslint) {
   try {
-    const folder = fs.mkdirSync(`./${projectName}`, { recursive: true });
-    if (!folder) {
-      folderExists = true;
-    } else {
-      console.log("Folder created successfully!");
-      folderExists = true;
+    // Create project directory
+    const projectPath = `./${projectName}`;
+    
+    if (fs.existsSync(projectPath)) {
+      console.error(`Error: Directory ${projectName} already exists!`);
+      return false;
     }
-  } catch (err) {
-    console.error("Error creating folder synchronously:", err);
-    return false;
-  }
+    
+    fs.mkdirSync(projectPath, { recursive: true });
 
-  if (folderExists) {
     // Create project structure
     const folders = [
-      `./${projectName}/src`
+      path.join(projectPath, 'src')
     ];
 
     folders.forEach(folder => {
       try {
         fs.mkdirSync(folder, { recursive: true });
-        console.log(`Created directory: ${folder}`);
       } catch (err) {
         console.error(`Error creating directory ${folder}:`, err);
       }
     });
 
-    // Determine file extension and content based on project type
-    const fileExtension = projectType === 'ts' ? 'ts' : 'js';
-    const serverContent = projectType === 'ts' ? 
-      getTypeScriptServerContent() : 
-      getJavaScriptServerContent();
-
-    // Write main server file
-    fs.writeFileSync(`./${projectName}/src/server.${fileExtension}`, serverContent, 'utf8');
+    // Create main server file content based on project type
+    const serverContent = projectType === 'ts' ? createTypeScriptServerContent() : createJavaScriptServerContent();
+    const serverFile = projectType === 'ts' ? 'server.ts' : 'server.js';
     
-    // Write configuration files
-    fs.writeFileSync(`./${projectName}/.env`, 'PORT=3000\nNODE_ENV=development', 'utf8');
-    fs.writeFileSync(`./${projectName}/.gitignore`, 'node_modules\n.env\ndist\n.DS_Store\ncoverage\n', 'utf8');
-  
-    // Install dependencies
-    try {
-      console.log('Initializing npm...');
-      execSync('npm init -y', { cwd: `./${projectName}`, stdio: 'inherit' });
-
-      if (dependencies.length > 0) {
-        const dependenciesStr = dependencies.join(' ');
-        console.log('Installing dependencies...');
-        execSync(`npm install ${dependenciesStr}`, { cwd: `./${projectName}`, stdio: 'inherit' });
-      }
-
-      // Initialize TypeScript if needed
-      if (projectType === 'ts') {
-        console.log('Initializing TypeScript...');
-        execSync('npx tsc --init', { cwd: `./${projectName}`, stdio: 'inherit' });
-      }
-
-      // Setup ESLint if requested
-      if (useEslint) {
-        console.log('Setting up ESLint...');
-        const eslintConfigContent = getEslintConfig(projectType);
-        fs.writeFileSync(`./${projectName}/eslint.config.mjs`, eslintConfigContent, 'utf8');
-      }
-
-      console.log('Project created successfully!');
-      return true;
-    } catch (error) {
-      console.error('Error during project setup:', error.message);
-      return false;
+    // Write main server file
+    fs.writeFileSync(path.join(projectPath, 'src', serverFile), serverContent, 'utf8');
+    
+    // Create environment file
+    fs.writeFileSync(path.join(projectPath, '.env'), 'PORT=3000\nNODE_ENV=development', 'utf8');
+    
+    // Create gitignore
+    fs.writeFileSync(path.join(projectPath, '.gitignore'), 'node_modules\n.env\ndist\n.DS_Store\ncoverage\n', 'utf8');
+    
+    // Create package.json
+    createPackageJson(projectPath, projectName, projectType, useEslint, dependencies);
+    
+    // Create TypeScript config if needed
+    if (projectType === 'ts') {
+      createTypeScriptConfig(projectPath);
     }
+    
+    // Create ESLint config if needed
+    if (useEslint) {
+      createEslintConfig(projectPath, projectType);
+    }
+    
+    return true;
+    
+  } catch (error) {
+    console.error('Error creating project:', error);
+    return false;
   }
-  
-  return false;
 }
-// Helper function to get TypeScript server content
-function getTypeScriptServerContent() {
+
+function createTypeScriptServerContent() {
   return `import express, { Express, Request, Response } from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
@@ -111,7 +91,7 @@ app.listen(port, () => {
 });
 
 // Error handling
-app.use((err: Error, req: Request, res: Response, next: any) => {
+app.use((err: Error, req: Request, res: Response, next: Function) => {
   console.error(err.stack);
   return res.status(500).json({
     error: 'Something broke!'
@@ -120,11 +100,10 @@ app.use((err: Error, req: Request, res: Response, next: any) => {
 `;
 }
 
-// Helper function to get JavaScript server content
-function getJavaScriptServerContent() {
-  return `const express = require('express');
-const cors = require('cors');
-const dotenv = require('dotenv');
+function createJavaScriptServerContent() {
+  return `import express from 'express';
+import cors from 'cors';
+import dotenv from 'dotenv';
 
 // Load environment variables
 dotenv.config();
@@ -160,10 +139,143 @@ app.use((err, req, res, next) => {
 `;
 }
 
-// Helper function to get ESLint configuration
-function getEslintConfig(projectType) {
+function createPackageJson(projectPath, projectName, projectType, useEslint, dependencies) {
+
+  /*
+    ****************************************************
+    this function is used to get the latest version of a package
+      async function getLatestVersion(packageName) {
+        try {
+          const { execSync } = await import('child_process');
+          const result = execSync(`npm view ${packageName} version`, { encoding: 'utf8' });
+          return result.trim();
+        } catch (error) {
+          return 'latest'; // fallback
+        }
+      }
+
+  */
+  const packageJson = {
+    name: projectName,
+    version: "1.0.0",
+    description: "",
+    main: projectType === 'ts' ? "dist/server.js" : "src/server.js",
+    type: "module",
+    scripts: {
+      test: "echo \"Error: no test specified\" && exit 1"
+    },
+    keywords: [],
+    author: "",
+    license: "ISC",
+    dependencies: {},
+    devDependencies: {}
+  };
+
+  // Add scripts based on project type
   if (projectType === 'ts') {
-    return `import js from '@eslint/js';
+    packageJson.scripts = {
+      ...packageJson.scripts,
+      dev: "ts-node src/server.ts",
+      build: "tsc",
+      start: "node dist/server.js"
+    };
+  } else {
+    packageJson.scripts = {
+      ...packageJson.scripts,
+      dev: "nodemon src/server.js",
+      start: "node src/server.js"
+    };
+  }
+
+  // Add lint script if ESLint is enabled
+  if (useEslint) {
+    packageJson.scripts.lint = "eslint src/**/*";
+    packageJson.scripts["lint:fix"] = "eslint src/**/* --fix";
+  }
+
+  // Separate dependencies into regular and dev dependencies
+  const prodDependencies = [
+    'express', 'cors', 'dotenv', 'better-sqlite3'
+  ];
+  
+  const devDependencies = [
+    'nodemon', 'eslint', '@eslint/js', 'globals',
+    'typescript', 'ts-node', '@typescript-eslint/eslint-plugin', 
+    '@typescript-eslint/parser'
+  ];
+
+  // Add dependencies to package.json
+  dependencies.forEach(dep => {
+    if (dep.startsWith('@types/')) {
+      packageJson.devDependencies[dep] = 'latest';
+    } else if (devDependencies.includes(dep)) {
+      packageJson.devDependencies[dep] = 'latest';
+    } else {
+      packageJson.dependencies[dep] = 'latest';
+    }
+  });
+
+  // Set specific versions for common packages
+  const versions = {
+    'express': "latest",
+    'cors': "latest",
+    'dotenv': "latest",
+    'better-sqlite3': "latest",
+    'nodemon': "latest",
+    'typescript': "latest",
+    'ts-node': "latest",
+    'eslint': "latest",
+    '@eslint/js': "latest",
+    'globals': "latest",
+    '@typescript-eslint/eslint-plugin': "latest",
+    '@typescript-eslint/parser': "latest"
+  };
+
+  // Apply specific versions where available
+  Object.keys(packageJson.dependencies).forEach(dep => {
+    if (versions[dep]) {
+      packageJson.dependencies[dep] = versions[dep];
+    }
+  });
+
+  Object.keys(packageJson.devDependencies).forEach(dep => {
+    if (versions[dep]) {
+      packageJson.devDependencies[dep] = versions[dep];
+    } else if (dep.startsWith('@types/')) {
+      // Use latest version for @types packages
+      packageJson.devDependencies[dep] = 'latest';
+    }
+  });
+
+  fs.writeFileSync(path.join(projectPath, 'package.json'), JSON.stringify(packageJson, null, 2), 'utf8');
+}
+
+function createTypeScriptConfig(projectPath) {
+  const tsConfig = {
+    compilerOptions: {
+      target: "ES2020",
+      module: "ESNext",
+      moduleResolution: "node",
+      outDir: "./dist",
+      rootDir: "./src",
+      strict: true,
+      esModuleInterop: true,
+      skipLibCheck: true,
+      forceConsistentCasingInFileNames: true,
+      declaration: true,
+      declarationMap: true,
+      sourceMap: true
+    },
+    include: ["src/**/*"],
+    exclude: ["node_modules", "dist"]
+  };
+
+  fs.writeFileSync(path.join(projectPath, 'tsconfig.json'), JSON.stringify(tsConfig, null, 2), 'utf8');
+}
+
+function createEslintConfig(projectPath, projectType) {
+  if (projectType === 'ts') {
+    const eslintConfig = `import js from '@eslint/js';
 import tseslint from 'typescript-eslint';
 import globals from 'globals';
 
@@ -173,19 +285,27 @@ export default [
   {
     files: ['**/*.ts'],
     languageOptions: {
+      parser: tseslint.parser,
+      parserOptions: {
+        sourceType: 'module',
+      },
       globals: {
         ...globals.node,
       },
+    },
+    plugins: {
+      '@typescript-eslint': tseslint.plugin,
     },
     rules: {
       '@typescript-eslint/no-unused-vars': ['warn'],
       'arrow-body-style': ['error', 'always'],
     },
-  },
+  }
 ];
 `;
+    fs.writeFileSync(path.join(projectPath, 'eslint.config.mjs'), eslintConfig, 'utf8');
   } else {
-    return `import js from '@eslint/js';
+    const eslintConfig = `import js from '@eslint/js';
 import globals from 'globals';
 
 export default [
@@ -193,6 +313,7 @@ export default [
   {
     files: ['**/*.js'],
     languageOptions: {
+      sourceType: 'module',
       globals: {
         ...globals.node,
       },
@@ -201,8 +322,9 @@ export default [
       'no-unused-vars': ['warn'],
       'arrow-body-style': ['error', 'always'],
     },
-  },
+  }
 ];
 `;
+    fs.writeFileSync(path.join(projectPath, 'eslint.config.mjs'), eslintConfig, 'utf8');
   }
-} 
+}
